@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Digital Wallet WebSocket Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .messages { height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #f9f9f9; }
+        .message { margin: 5px 0; padding: 5px; background: white; border-radius: 3px; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        input[type="text"], input[type="number"] { padding: 8px; margin: 5px; width: 200px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Digital Wallet WebSocket Test</h1>
+
+        <div class="section">
+            <h3>Connection</h3>
+            <input type="number" id="userId" placeholder="Enter User ID" value="1">
+            <button onclick="connect()">Connect</button>
+            <button onclick="disconnect()">Disconnect</button>
+            <p>Status: <span id="status">Disconnected</span></p>
+        </div>
+
+        <div class="section">
+            <h3>Test Notifications</h3>
+            <input type="number" id="testUserId" placeholder="User ID" value="1">
+            <input type="text" id="testMessage" placeholder="Test message">
+            <button onclick="sendTestNotification()">Send Test Notification</button>
+            <button onclick="sendBroadcast()">Send Broadcast</button>
+        </div>
+
+        <div class="section">
+            <h3>Messages</h3>
+            <div id="messages" class="messages"></div>
+            <button onclick="clearMessages()">Clear Messages</button>
+        </div>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let currentUserId = null;
+
+        function connect() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Please enter a User ID');
+                return;
+            }
+
+            currentUserId = userId;
+            const socket = new SockJS('http://localhost:8080/ws');
+            stompClient = Stomp.over(socket);
+
+            stompClient.connect({}, function(frame) {
+                console.log('Connected: ' + frame);
+                document.getElementById('status').textContent = 'Connected';
+
+                // Subscribe to user-specific balance updates
+                stompClient.subscribe('/topic/balance/' + userId, function(message) {
+                    const balanceUpdate = JSON.parse(message.body);
+                    showMessage('Balance Update', `Balance changed from ${balanceUpdate.oldBalance} to ${balanceUpdate.newBalance}`, 'balance');
+                });
+
+                // Subscribe to user-specific notifications
+                stompClient.subscribe('/topic/notifications/' + userId, function(message) {
+                    const notification = JSON.parse(message.body);
+                    showMessage(notification.title, notification.message, 'notification');
+                });
+
+                // Subscribe to global notifications
+                stompClient.subscribe('/topic/global', function(message) {
+                    const notification = JSON.parse(message.body);
+                    showMessage('[GLOBAL] ' + notification.title, notification.message, 'global');
+                });
+
+                showMessage('System', 'Connected to WebSocket server', 'system');
+            });
+        }
+
+        function disconnect() {
+            if (stompClient !== null) {
+                stompClient.disconnect();
+                document.getElementById('status').textContent = 'Disconnected';
+                showMessage('System', 'Disconnected from WebSocket server', 'system');
+            }
+        }
+
+        function sendTestNotification() {
+            const userId = document.getElementById('testUserId').value;
+            const message = document.getElementById('testMessage').value;
+
+            if (!userId) {
+                alert('Please enter a User ID');
+                return;
+            }
+
+            fetch(`http://localhost:8080/api/transactions/test-notification/${userId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(message || 'Test notification')
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Test notification sent:', data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        function sendBroadcast() {
+            const message = document.getElementById('testMessage').value;
+
+            if (!message) {
+                alert('Please enter a message');
+                return;
+            }
+
+            fetch('http://localhost:8080/api/transactions/broadcast', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(message)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Broadcast sent:', data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        function showMessage(title, message, type) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+
+            const timestamp = new Date().toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <strong>[${timestamp}] ${title}:</strong><br>
+                ${message}
+            `;
+
+            // Color coding based on type
+            switch(type) {
+                case 'balance':
+                    messageDiv.style.borderLeft = '4px solid #4CAF50';
+                    break;
+                case 'notification':
+                    messageDiv.style.borderLeft = '4px solid #2196F3';
+                    break;
+                case 'global':
+                    messageDiv.style.borderLeft = '4px solid #FF9800';
+                    break;
+                case 'system':
+                    messageDiv.style.borderLeft = '4px solid #9E9E9E';
+                    break;
+            }
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+    </script>
+</body>
+</html>

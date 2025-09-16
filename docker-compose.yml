@@ -1,0 +1,40 @@
+# docker-compose.yml
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: digital-wallet-mysql
+    environment:
+      MYSQL_DATABASE: digital_wallet_prod
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: wallet_user
+      MYSQL_PASSWORD: wallet_password
+    ports:
+      - "3310:3310"
+    volumes:
+      - wallet_mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - wallet-network
+
+  app:
+    build: .
+    container_name: digital-wallet-app
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_USERNAME: wallet_user
+      DB_PASSWORD: wallet_password
+      JWT_SECRET: myVerySecureJWTSecretKeyForProduction123456789
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+    networks:
+      - wallet-network
+
+volumes:
+  wallet_mysql_data:
+
+networks:
+  wallet-network:
+    driver: bridge
